@@ -8,6 +8,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
 import { LinkResolverModule } from './link-resolver/link-resolver.module';
 import { StorageModule } from './storage/storage.module';
+import { GS1Module } from './gs1/gs1.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { StorageModule } from './storage/storage.module';
     PrismaModule,
     LinkResolverModule,
     StorageModule,
+    GS1Module,
   ],
   controllers: [AppController],
   providers: [AppService],

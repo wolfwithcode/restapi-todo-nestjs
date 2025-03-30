@@ -44,7 +44,7 @@ export class VerifyIntegrityCommand extends CommandRunner {
     try {
       this.logger.log(`Verifying integrity of ${options.entityType} with ID: ${options.entityId}`);
       
-      const result = await this.gs1Service.verifyIntegrity(
+      const result = await this.gs1Service.verifyETagConcurrency(
         options.entityType,
         options.entityId
       );
@@ -53,23 +53,24 @@ export class VerifyIntegrityCommand extends CommandRunner {
       console.log(`Entity Type: ${result.entityType}`);
       console.log(`Entity ID: ${result.entityId}`);
       console.log(`Timestamp: ${result.timestamp}`);
-      console.log(`Overall Integrity: ${result.isValid ? 'VALID ✓' : 'INVALID ✗'}`);
-      console.log('\nFile Verification Results:');
+      console.log(`ETag Available: ${result.hasETag ? 'YES ✓' : 'NO ✗'}`);
+      console.log(`Concurrency Control: ${result.concurrencyControlReady ? 'READY ✓' : 'NOT READY ✗'}`);
       
-      for (const [file, valid] of Object.entries(result.files)) {
-        console.log(`  ${file}: ${valid ? 'VALID ✓' : 'INVALID ✗'}`);
+      if (result.etag) {
+        console.log(`ETag: ${result.etag}`);
       }
       
-      if (!result.isValid) {
-        console.log('\n⚠️ Integrity check failed for one or more files! ⚠️');
-        console.log('This indicates that files may have been tampered with or corrupted.');
+      if (!result.concurrencyControlReady) {
+        console.log('\n⚠️ Entity does not support ETag-based concurrency control! ⚠️');
+        console.log('This may lead to potential data corruption in concurrent update scenarios.');
       } else {
-        console.log('\n✓ All integrity checks passed successfully.');
+        console.log('\n✓ Entity supports ETag-based concurrency control.');
+        console.log('Update operations will be protected against concurrent modifications.');
       }
       
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to verify integrity: ${errorMessage}`);
+      this.logger.error(`Failed to verify ETag concurrency: ${errorMessage}`);
     }
   }
 } 

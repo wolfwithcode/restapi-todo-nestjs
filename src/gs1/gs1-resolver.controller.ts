@@ -8,15 +8,25 @@ import {
   Body, 
   NotFoundException,
   Logger,
-  Query
+  Query,
+  BadRequestException
 } from '@nestjs/common';
 import { GS1ResolverService } from './gs1-resolver.service';
+import { ApiTags, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 
+@ApiTags('GS1 Identity Resolver')
 @Controller('gs1')
 export class GS1ResolverController {
   private readonly logger = new Logger(GS1ResolverController.name);
 
   constructor(private readonly gs1Service: GS1ResolverService) {}
+
+  @Get('health')
+  @ApiOperation({ summary: 'Health check endpoint' })
+  @ApiResponse({ status: 200, description: 'Service is healthy' })
+  async healthCheck(): Promise<{ status: string }> {
+    return { status: 'ok' };
+  }
 
   @Get('initialize')
   async initialize() {
@@ -38,33 +48,52 @@ export class GS1ResolverController {
   // Data Integrity Verification endpoints
   
   @Get('verify/:entityType/:entityId')
+  @ApiOperation({ summary: 'Verify ETag concurrency control for an entity' })
+  @ApiParam({ name: 'entityType', description: 'Entity type (product, company, metadata)' })
+  @ApiParam({ name: 'entityId', description: 'Entity ID' })
   async verifyIntegrity(
     @Param('entityType') entityType: string,
-    @Param('entityId') entityId: string
-  ) {
-    return this.gs1Service.verifyIntegrity(entityType, entityId);
+    @Param('entityId') entityId: string,
+  ): Promise<any> {
+    if (!['product', 'company', 'metadata'].includes(entityType)) {
+      throw new BadRequestException(`Invalid entity type: ${entityType}`);
+    }
+    
+    return this.gs1Service.verifyETagConcurrency(entityType, entityId);
   }
 
   @Get('verify/metadata')
   async verifyMetadataIntegrity() {
-    return this.gs1Service.verifyIntegrity('metadata', 'system');
+    return this.gs1Service.verifyETagConcurrency('metadata', 'system');
   }
 
   // Products
   
   @Get('products/:productId')
+  @ApiOperation({ summary: 'Get product information by ID' })
+  @ApiParam({ name: 'productId', description: 'GS1 Product ID (GTIN)' })
+  @ApiQuery({
+    name: 'includeETag',
+    description: 'Include ETag for concurrency control',
+    required: false,
+    type: Boolean,
+  })
   async getProduct(
     @Param('productId') productId: string,
-    @Query('includeHash') includeHash?: string
-  ) {
-    if (includeHash === 'true') {
-      this.logger.log(`Getting product ${productId} with hash for update validation`);
-      return this.gs1Service.getProductWithHash(productId);
+    @Query('includeETag') includeETag?: string,
+  ): Promise<any> {
+    const includeETagBool = includeETag === 'true';
+    
+    if (includeETagBool) {
+      return this.gs1Service.getProductWithETag(productId);
+    } else {
+      return this.gs1Service.getProduct(productId);
     }
-    return this.gs1Service.getProduct(productId);
   }
 
   @Post('products/:productId')
+  @ApiOperation({ summary: 'Create or update product information' })
+  @ApiParam({ name: 'productId', description: 'GS1 Product ID (GTIN)' })
   async createProduct(
     @Param('productId') productId: string,
     @Body() productData: any
@@ -87,6 +116,8 @@ export class GS1ResolverController {
   }
 
   @Get('products/:productId/history')
+  @ApiOperation({ summary: 'Get product history records' })
+  @ApiParam({ name: 'productId', description: 'GS1 Product ID (GTIN)' })
   async getProductHistory(@Param('productId') productId: string) {
     return this.gs1Service.getProductHistory(productId);
   }
@@ -94,29 +125,41 @@ export class GS1ResolverController {
   // Certificates
   
   @Get('products/:productId/certificates')
+  @ApiOperation({ summary: 'Get product certificates' })
+  @ApiParam({ name: 'productId', description: 'GS1 Product ID (GTIN)' })
   async getProductCertificates(@Param('productId') productId: string) {
     return this.gs1Service.getProductCertificates(productId);
   }
 
   @Get('products/:productId/certificates/:certificateId')
+  @ApiOperation({ summary: 'Get a specific product certificate' })
+  @ApiParam({ name: 'productId', description: 'GS1 Product ID (GTIN)' })
+  @ApiParam({ name: 'certificateId', description: 'Certificate ID' })
+  @ApiQuery({
+    name: 'includeETag',
+    description: 'Include ETag for concurrency control',
+    required: false,
+    type: Boolean,
+  })
   async getProductCertificate(
     @Param('productId') productId: string,
     @Param('certificateId') certificateId: string,
-    @Query('includeHash') includeHash?: string
-  ) {
-    if (includeHash === 'true') {
-      return this.gs1Service.getCertificateWithHash(productId, certificateId);
+    @Query('includeETag') includeETag?: string,
+  ): Promise<any> {
+    const includeETagBool = includeETag === 'true';
+    
+    if (includeETagBool) {
+      return this.gs1Service.getCertificateWithETag(productId, certificateId);
+    } else {
+      const result = await this.gs1Service.getCertificateWithETag(productId, certificateId);
+      const { _etag, ...data } = result;
+      return data;
     }
-    // For regular certificate access, fetch from certificates list
-    const certificates = await this.gs1Service.getProductCertificates(productId);
-    const certificate = certificates.find(c => c.id === certificateId);
-    if (!certificate) {
-      throw new NotFoundException(`Certificate with ID ${certificateId} not found`);
-    }
-    return certificate;
   }
 
   @Post('products/:productId/certificates')
+  @ApiOperation({ summary: 'Add a certificate to a product' })
+  @ApiParam({ name: 'productId', description: 'GS1 Product ID (GTIN)' })
   async addProductCertificate(
     @Param('productId') productId: string,
     @Body() certificateData: any
@@ -127,18 +170,30 @@ export class GS1ResolverController {
   // Companies
   
   @Get('companies/:companyId')
+  @ApiOperation({ summary: 'Get company information by ID' })
+  @ApiParam({ name: 'companyId', description: 'GS1 Company ID (GLN)' })
+  @ApiQuery({
+    name: 'includeETag',
+    description: 'Include ETag for concurrency control',
+    required: false,
+    type: Boolean,
+  })
   async getCompany(
     @Param('companyId') companyId: string,
-    @Query('includeHash') includeHash?: string
-  ) {
-    if (includeHash === 'true') {
-      this.logger.log(`Getting company ${companyId} with hash for update validation`);
-      return this.gs1Service.getCompanyWithHash(companyId);
+    @Query('includeETag') includeETag?: string,
+  ): Promise<any> {
+    const includeETagBool = includeETag === 'true';
+    
+    if (includeETagBool) {
+      return this.gs1Service.getCompanyWithETag(companyId);
+    } else {
+      return this.gs1Service.getCompany(companyId);
     }
-    return this.gs1Service.getCompany(companyId);
   }
 
   @Post('companies/:companyId')
+  @ApiOperation({ summary: 'Create or update company information' })
+  @ApiParam({ name: 'companyId', description: 'GS1 Company ID (GLN)' })
   async createCompany(
     @Param('companyId') companyId: string,
     @Body() companyData: any

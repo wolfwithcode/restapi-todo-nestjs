@@ -1,36 +1,42 @@
 #!/bin/bash
 
-# Verify data integrity of GS1 entities
-
-# Check if MinIO is running
+# Check if MinIO is running, if not start it
 if ! docker ps | grep -q minio; then
-  echo "MinIO container is not running. Starting MinIO..."
+  echo "Starting MinIO..."
   docker-compose -f docker-compose.minio.yml up -d
-  
-  # Wait for MinIO to start
-  echo "Waiting for MinIO to start..."
-  sleep 5
+  sleep 5  # Give MinIO time to start
 fi
 
-# Determine the entity type and ID
-if [ "$1" == "" ] || [ "$2" == "" ]; then
-  echo "Usage: $0 <entity_type> <entity_id>"
-  echo "Entity types: product, company, metadata"
+# Set default values
+ENTITY_TYPE=${1:-metadata}
+ENTITY_ID=${2:-system}
+
+# Output usage if help is requested
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+  echo "Usage: $0 [entity_type] [entity_id]"
+  echo ""
+  echo "Verifies ETag concurrency control for GS1 entities."
+  echo ""
+  echo "Entity types:"
+  echo "  product   - Product data (requires product ID)"
+  echo "  company   - Company data (requires company ID)"
+  echo "  metadata  - System metadata (use 'system' as entity ID)"
+  echo ""
   echo "Examples:"
   echo "  $0 product 01/12345678901234"
-  echo "  $0 company company-12345"
+  echo "  $0 company 123456789"
   echo "  $0 metadata system"
-  
-  # If no parameters, verify system metadata by default
-  ENTITY_TYPE="metadata"
-  ENTITY_ID="system"
   echo ""
-  echo "No parameters provided. Defaulting to system metadata verification."
-else
-  ENTITY_TYPE="$1"
-  ENTITY_ID="$2"
+  exit 0
 fi
 
-echo ""
-echo "Verifying data integrity of $ENTITY_TYPE with ID: $ENTITY_ID"
-yarn ts-node src/cli.ts --gs1 verify-integrity -t "$ENTITY_TYPE" -i "$ENTITY_ID" 
+echo "Verifying ETag concurrency control for $ENTITY_TYPE/$ENTITY_ID..."
+yarn ts-node src/cli.ts --gs1 verify-etag -t "$ENTITY_TYPE" -i "$ENTITY_ID"
+
+# Check the exit status
+if [ $? -eq 0 ]; then
+  echo "✅ ETag concurrency control verification successful."
+else
+  echo "❌ ETag concurrency control verification failed."
+  exit 1
+fi 

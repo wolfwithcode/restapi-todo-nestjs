@@ -8,9 +8,18 @@ import {
   HeadBucketCommand,
   CreateBucketCommand,
   ListObjectsV2Command,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
+
+/**
+ * Interface for file retrieval with ETag
+ */
+export interface FileWithETag {
+  data: any;
+  etag: string;
+}
 
 @Injectable()
 export class MinioService implements OnModuleInit {
@@ -64,34 +73,54 @@ export class MinioService implements OnModuleInit {
    * @param key Object key (path)
    * @param data File data (Buffer, string, etc.)
    * @param contentType MIME type
-   * @returns Success flag
+   * @param ifMatch Optional ETag for conditional update (concurrency control)
+   * @returns Object with success flag and ETag if successful
    */
-  async uploadFile(key: string, data: any, contentType = 'application/json'): Promise<boolean> {
+  async uploadFile(
+    key: string, 
+    data: any, 
+    contentType = 'application/json',
+    ifMatch?: string
+  ): Promise<{ success: boolean; etag?: string }> {
     try {
-      const result = await this.s3Client.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-          Body: typeof data === 'string' ? data : JSON.stringify(data),
-          ContentType: contentType,
-        }),
-      );
+      const command = new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: typeof data === 'string' ? data : JSON.stringify(data),
+        ContentType: contentType,
+        ...(ifMatch && { IfMatch: ifMatch }),
+      });
       
-      this.logger.debug(`File uploaded successfully: ${key}`);
-      return true;
+      const result = await this.s3Client.send(command);
+      
+      // Return success with ETag for future concurrency control
+      return { 
+        success: true,
+        etag: result.ETag?.replace(/"/g, '') // Remove quotes from ETag
+      };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if this is a precondition failed error (ETag mismatch)
+      if (errorMessage.includes('PreconditionFailed') || errorMessage.includes('412')) {
+        this.logger.warn(`Concurrency conflict detected for ${key}: ETag doesn't match`);
+        return { 
+          success: false,
+          etag: undefined 
+        };
+      }
+      
       this.logger.error(`Error uploading file ${key}: ${errorMessage}`);
-      return false;
+      return { success: false };
     }
   }
 
   /**
-   * Read a file from MinIO
+   * Read a file from MinIO with its ETag
    * @param key Object key (path)
-   * @returns File data
+   * @returns File data with ETag or null if not found
    */
-  async getFile(key: string): Promise<any> {
+  async getFileWithETag(key: string): Promise<FileWithETag | null> {
     try {
       const response = await this.s3Client.send(
         new GetObjectCommand({
@@ -102,14 +131,20 @@ export class MinioService implements OnModuleInit {
       
       // Convert stream to string
       const bodyContents = await this.streamToString(response.Body as Readable);
+      let data;
       
       try {
         // Try to parse as JSON
-        return JSON.parse(bodyContents);
+        data = JSON.parse(bodyContents);
       } catch (e) {
         // Return as string if not valid JSON
-        return bodyContents;
+        data = bodyContents;
       }
+      
+      // Extract and clean ETag
+      const etag = response.ETag?.replace(/"/g, '') || '';
+      
+      return { data, etag };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error getting file ${key}: ${errorMessage}`);
@@ -118,16 +153,50 @@ export class MinioService implements OnModuleInit {
   }
 
   /**
+   * Get file without returning ETag (for backward compatibility)
+   * @param key Object key (path)
+   * @returns File data
+   */
+  async getFile(key: string): Promise<any> {
+    const result = await this.getFileWithETag(key);
+    return result ? result.data : null;
+  }
+
+  /**
+   * Get only the ETag of a file without fetching its contents
+   * @param key Object key (path)
+   * @returns ETag string or null if not found
+   */
+  async getETag(key: string): Promise<string | null> {
+    try {
+      const response = await this.s3Client.send(
+        new HeadObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+      
+      return response.ETag?.replace(/"/g, '') || null;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error getting ETag for ${key}: ${errorMessage}`);
+      return null;
+    }
+  }
+
+  /**
    * Delete a file from MinIO
    * @param key Object key (path)
+   * @param ifMatch Optional ETag for conditional delete
    * @returns Success flag
    */
-  async deleteFile(key: string): Promise<boolean> {
+  async deleteFile(key: string, ifMatch?: string): Promise<boolean> {
     try {
       await this.s3Client.send(
         new DeleteObjectCommand({
           Bucket: this.bucket,
           Key: key,
+          ...(ifMatch && { IfMatch: ifMatch }),
         }),
       );
       

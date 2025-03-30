@@ -1,98 +1,91 @@
-# Data Integrity Mechanisms for S3/MinIO Storage
+# GS1 Identity Resolver Data Integrity
 
-Since S3 and MinIO storage lack the strong consistency guarantees of traditional databases, we have implemented additional data integrity mechanisms to ensure data reliability and prevent corruption or tampering.
+The GS1 Identity Resolver uses AWS S3/MinIO for storage. Since these storage systems don't provide strong consistency guarantees for all operations, we've implemented additional mechanisms to ensure data integrity and handle concurrent modifications.
 
-## Implementation Details
+## ETag-Based Optimistic Concurrency Control
 
-### 1. SHA-256 Hash Verification
+Our system uses the built-in ETag feature of S3/MinIO to provide optimistic concurrency control:
 
-Every data file in our GS1 Identity Resolver system has a corresponding hash file:
+1. **ETags for File Versioning**: Every object in S3/MinIO has an ETag that changes whenever the object is updated. We leverage this to detect concurrent modifications.
 
-- For each `{file}.json`, we maintain a `{file}.hash` file
-- The hash file contains:
-  - A SHA-256 hash of the original data file
-  - A timestamp of when the hash was generated
+2. **Conditional Operations**: When updating data, we include the original ETag to ensure that the object hasn't been modified by another process since it was retrieved.
 
-When retrieving data, the system:
-1. Gets both the data file and its corresponding hash file
-2. Recalculates the SHA-256 hash of the data file
-3. Compares it with the stored hash
-4. Issues warnings if hashes don't match, indicating potential tampering or corruption
+3. **Optimistic Locking**: If the ETags don't match during an update, the operation fails, and the client must retrieve the latest version and try again.
 
-### 2. Pre-Update Hash Validation
+4. **Immutable History Records**: All changes to product data are recorded in immutable history files, with each historical version being preserved with its own ETag.
 
-To prevent concurrent modification conflicts:
+## Verification and Usage
 
-1. When retrieving data for modification purposes, the system includes the current hash in the response (as `_hash`)
-2. When updating data, clients must include this original hash
-3. Before processing the update, the system:
-   - Recalculates the current hash of the file
-   - Compares it with the provided hash
-   - Rejects the update if hashes don't match, indicating the file was modified elsewhere
+### API Endpoints
 
-### 3. Immutable History Records
+The system provides API endpoints to verify ETag-based concurrency control:
 
-For product data, all changes are recorded in history files:
+- `GET /gs1/verify/{entityType}/{entityId}` - Verify ETag exists for a specific entity
+- `GET /gs1/verify/metadata` - Verify ETag exists for system metadata
 
-- History records include their own hash embedded in the record
-- History files are immutable and never modified after creation
-- Each history entry contains complete data at that point in time
+### CLI Commands
 
-### 4. Integrity Verification Tools
+CLI commands for verification:
 
-The system provides multiple tools to verify data integrity:
+```bash
+# Verify ETag concurrency control for a product
+yarn gs1:verify -t product -i 01/12345678901234
 
-#### API Endpoints:
-- `GET /gs1/verify/{entityType}/{entityId}` - Verifies integrity of a specific entity
-- `GET /gs1/verify/metadata` - Verifies system-wide metadata integrity
+# Verify ETag concurrency control for system metadata
+yarn gs1:verify -t metadata -i system
 
-#### CLI Commands:
-- `yarn gs1:verify -t <entityType> -i <entityId>` - Verifies integrity via command line
-- `./verify-integrity.sh <entityType> <entityId>` - Convenient shell script for verification
+# Using the verification script
+./verify-integrity.sh product 01/12345678901234
+```
 
 ## Usage Examples
 
-### Retrieve Data with Hash for Update Operations
+### Retrieving Data with ETag for Updates
 
-```http
-GET /gs1/products/01/12345678901234?includeHash=true
+To update data, first retrieve it with the ETag:
+
+```
+GET /gs1/products/01/12345678901234?includeETag=true
 ```
 
-Response includes the `_hash` field:
+Response:
 ```json
 {
   "id": "01/12345678901234",
-  "name": "Organic Apple Juice",
-  "_hash": "a1b2c3d4e5f6..."
+  "name": "Product Name",
+  "data": "...",
+  "_etag": "a1b2c3d4..."
 }
 ```
 
-### Update with Hash Validation
+### Updating with ETag Validation
 
-```http
-PUT /gs1/products/01/12345678901234
+When updating, include the original ETag:
+
+```
+POST /gs1/products/01/12345678901234
 {
   "id": "01/12345678901234",
-  "name": "Updated Organic Apple Juice",
-  "_hash": "a1b2c3d4e5f6..."
+  "name": "Updated Product Name",
+  "data": "...",
+  "_etag": "a1b2c3d4..."
 }
 ```
 
-The system will validate that the hash matches before applying the update.
-
-### Verify Data Integrity
-
-```bash
-# Verify product integrity
-./verify-integrity.sh product 01/12345678901234
-
-# Verify system metadata integrity
-./verify-integrity.sh metadata system
-```
+If the object has been modified by another process since retrieval, the update will fail with a 409 Conflict response, indicating that the client needs to fetch the latest version and try again.
 
 ## Benefits
 
-- **Tamper Detection**: Any unauthorized changes to data files can be detected
-- **Corruption Prevention**: Accidental corruption of data during transit or storage can be identified
-- **Optimistic Concurrency**: Prevents conflicting updates without locking
-- **Audit Trail**: History records provide a verifiable audit trail of all changes 
+1. **Tamper Detection**: The ETag mechanism ensures data hasn't been modified unexpectedly.
+
+2. **Corruption Prevention**: By verifying ETags before updates, we prevent accidental overwrites of data changed by other processes.
+
+3. **Optimistic Concurrency**: The system provides optimistic concurrency control, allowing high throughput while still preventing data corruption from concurrent modifications.
+
+4. **Audit Trail**: Immutable history records provide a complete audit trail of all changes to product data.
+
+## Implementation Details
+
+- `MinioService` includes methods for handling ETags, such as `getFileWithETag`, `uploadFile` (with optional ETag parameter), and `getETag`.
+- `GS1StorageService` leverages these methods to implement ETag-based concurrency control at a higher level.
+- `GS1ResolverService` provides a clean API that handles ETags transparently for client applications. 

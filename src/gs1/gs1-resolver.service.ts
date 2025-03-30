@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { GS1StorageService } from '../storage/gs1-storage.service';
 import { HashUtil } from '../common/utils/hash.util';
 
@@ -30,20 +30,20 @@ export class GS1ResolverService {
   }
 
   /**
-   * Get product with hash for update operations
-   * This includes the current hash for pre-update validation
+   * Get product with ETag for update operations
+   * This includes the ETag needed for concurrency control
    */
-  async getProductWithHash(productId: string): Promise<any> {
-    const product = await this.getProduct(productId);
-    if (product) {
-      // Add current hash for pre-update validation
-      const productKey = `products/${productId}.json`;
-      const currentHash = await this.gs1Storage.getCurrentHash(productKey);
-      if (currentHash) {
-        product._hash = currentHash;
-      }
+  async getProductWithETag(productId: string): Promise<any> {
+    const result = await this.gs1Storage.getProductWithETag(productId);
+    if (!result) {
+      throw new NotFoundException(`Product with ID ${productId} not found`);
     }
-    return product;
+    
+    // Add ETag to the response for client-side concurrency control
+    return {
+      ...result.data,
+      _etag: result.etag
+    };
   }
 
   /**
@@ -51,18 +51,20 @@ export class GS1ResolverService {
    */
   async upsertProduct(productId: string, data: any): Promise<any> {
     // Get current product data (if exists)
-    const existingProduct = await this.gs1Storage.getProduct(productId);
+    const existingProduct = await this.gs1Storage.getProductWithETag(productId);
     
-    // Validate hash if this is an update and hash was provided
-    if (existingProduct && data._hash) {
-      const productKey = `products/${productId}.json`;
-      const currentHash = await this.gs1Storage.getCurrentHash(productKey);
-      
-      if (currentHash && currentHash !== data._hash) {
-        throw new BadRequestException(
-          'Data integrity check failed: The product has been modified since you retrieved it'
-        );
-      }
+    // Extract ETag for concurrency control if provided
+    const etag = data._etag;
+    if (etag) {
+      // Remove the _etag property before saving
+      delete data._etag;
+    }
+    
+    // When updating existing product, ETag is required
+    if (existingProduct && !etag) {
+      throw new BadRequestException(
+        'ETag is required for updates. Retrieve the resource with ?includeETag=true first.'
+      );
     }
     
     // Add metadata
@@ -70,18 +72,20 @@ export class GS1ResolverService {
       ...data,
       id: productId,
       updatedAt: new Date().toISOString(),
-      createdAt: existingProduct?.createdAt || new Date().toISOString(),
+      createdAt: existingProduct ? existingProduct.data.createdAt : new Date().toISOString(),
     };
     
-    // Save product data
-    const success = await this.gs1Storage.saveProduct(productId, productData);
+    // Save product data with ETag validation
+    const success = await this.gs1Storage.saveProduct(productId, productData, etag);
     if (!success) {
-      throw new Error(`Failed to save product ${productId}`);
+      throw new ConflictException(
+        'Concurrency conflict: The product has been modified since you retrieved it. Please get the latest version and try again.'
+      );
     }
     
     // If product existed, add a history record
     if (existingProduct) {
-      await this.gs1Storage.addProductHistory(productId, existingProduct);
+      await this.gs1Storage.addProductHistory(productId, existingProduct.data);
     }
     
     // Update the product index for quick lookup
@@ -92,22 +96,27 @@ export class GS1ResolverService {
       certificateIds: data.certificateIds || [],
     });
     
-    return productData;
+    // Get the fresh product with new ETag
+    const updatedProduct = await this.gs1Storage.getProductWithETag(productId);
+    return {
+      ...updatedProduct?.data,
+      _etag: updatedProduct?.etag
+    };
   }
 
   /**
    * Delete product information
    */
-  async deleteProduct(productId: string): Promise<boolean> {
+  async deleteProduct(productId: string, etag?: string): Promise<boolean> {
     // Get current product data
-    const existingProduct = await this.gs1Storage.getProduct(productId);
+    const existingProduct = await this.gs1Storage.getProductWithETag(productId);
     if (!existingProduct) {
       throw new NotFoundException(`Product with ID ${productId} not found`);
     }
     
     // Add a deletion record to history
     await this.gs1Storage.addProductHistory(productId, {
-      ...existingProduct,
+      ...existingProduct.data,
       deletedAt: new Date().toISOString(),
       _deleted: true,
     });
@@ -152,27 +161,24 @@ export class GS1ResolverService {
   }
 
   /**
-   * Get certificate with hash for update operations
+   * Get certificate with ETag for update operations
    */
-  async getCertificateWithHash(productId: string, certificateId: string): Promise<any> {
+  async getCertificateWithETag(productId: string, certificateId: string): Promise<any> {
     const product = await this.gs1Storage.getProduct(productId);
     if (!product) {
       throw new NotFoundException(`Product with ID ${productId} not found`);
     }
     
-    const certificate = await this.gs1Storage.getProductCertificate(productId, certificateId);
+    const certificate = await this.gs1Storage.getProductCertificateWithETag(productId, certificateId);
     if (!certificate) {
       throw new NotFoundException(`Certificate with ID ${certificateId} not found`);
     }
     
-    // Add current hash for pre-update validation
-    const certKey = `products/${productId}/certificates/${certificateId}.json`;
-    const currentHash = await this.gs1Storage.getCurrentHash(certKey);
-    if (currentHash) {
-      certificate._hash = currentHash;
-    }
-    
-    return certificate;
+    // Add ETag to the response for client-side concurrency control
+    return {
+      ...certificate.data,
+      _etag: certificate.etag
+    };
   }
 
   /**
@@ -183,6 +189,13 @@ export class GS1ResolverService {
     const product = await this.gs1Storage.getProduct(productId);
     if (!product) {
       throw new NotFoundException(`Product with ID ${productId} not found`);
+    }
+    
+    // Extract ETag for concurrency control if provided
+    const etag = certificateData._etag;
+    if (etag) {
+      // Remove the _etag property before saving
+      delete certificateData._etag;
     }
     
     // Generate certificate ID if not provided
@@ -197,31 +210,54 @@ export class GS1ResolverService {
       createdAt: new Date().toISOString(),
     };
     
-    // Save certificate
+    // Save certificate with ETag validation (if updating)
     const success = await this.gs1Storage.saveProductCertificate(
       productId, 
       certificateData.id,
-      certData
+      certData,
+      etag
     );
     
     if (!success) {
-      throw new Error(`Failed to save certificate for product ${productId}`);
+      throw new ConflictException(
+        'Concurrency conflict: The certificate has been modified since you retrieved it. Please get the latest version and try again.'
+      );
     }
     
     // Update product to reference the certificate
-    const updatedCertIds = [...(product.certificateIds || []), certificateData.id];
-    await this.gs1Storage.saveProduct(productId, {
-      ...product,
-      certificateIds: updatedCertIds,
-      updatedAt: new Date().toISOString(),
-    });
+    const productWithETag = await this.gs1Storage.getProductWithETag(productId);
+    if (!productWithETag) {
+      throw new NotFoundException(`Product with ID ${productId} not found`);
+    }
+    
+    const updatedCertIds = [...(productWithETag.data.certificateIds || []), certificateData.id];
+    const productUpdateSuccess = await this.gs1Storage.saveProduct(
+      productId, 
+      {
+        ...productWithETag.data,
+        certificateIds: updatedCertIds,
+        updatedAt: new Date().toISOString(),
+      },
+      productWithETag.etag
+    );
+    
+    if (!productUpdateSuccess) {
+      throw new ConflictException(
+        'Concurrency conflict: The product has been modified during certificate addition. Please try again.'
+      );
+    }
     
     // Add to product index
     await this.updateProductIndex(productId, {
       certificateIds: updatedCertIds,
     });
     
-    return certData;
+    // Get the fresh certificate with new ETag
+    const updatedCert = await this.gs1Storage.getProductCertificateWithETag(productId, certificateData.id);
+    return {
+      ...updatedCert?.data,
+      _etag: updatedCert?.etag
+    };
   }
 
   /**
@@ -264,37 +300,40 @@ export class GS1ResolverService {
   }
 
   /**
-   * Get company with hash for update operations
+   * Get company with ETag for update operations
    */
-  async getCompanyWithHash(companyId: string): Promise<any> {
-    const company = await this.getCompany(companyId);
-    if (company) {
-      // Add current hash for pre-update validation
-      const companyKey = `companies/${companyId}.json`;
-      const currentHash = await this.gs1Storage.getCurrentHash(companyKey);
-      if (currentHash) {
-        company._hash = currentHash;
-      }
+  async getCompanyWithETag(companyId: string): Promise<any> {
+    const company = await this.gs1Storage.getCompanyWithETag(companyId);
+    if (!company) {
+      throw new NotFoundException(`Company with ID ${companyId} not found`);
     }
-    return company;
+    
+    // Add ETag to the response for client-side concurrency control
+    return {
+      ...company.data,
+      _etag: company.etag
+    };
   }
 
   /**
    * Create or update company information
    */
   async upsertCompany(companyId: string, data: any): Promise<any> {
-    // Validate hash if this is an update and hash was provided
-    const existingCompany = await this.gs1Storage.getCompany(companyId);
+    // Check if company exists
+    const existingCompany = await this.gs1Storage.getCompanyWithETag(companyId);
     
-    if (existingCompany && data._hash) {
-      const companyKey = `companies/${companyId}.json`;
-      const currentHash = await this.gs1Storage.getCurrentHash(companyKey);
-      
-      if (currentHash && currentHash !== data._hash) {
-        throw new BadRequestException(
-          'Data integrity check failed: The company has been modified since you retrieved it'
-        );
-      }
+    // Extract ETag for concurrency control if provided
+    const etag = data._etag;
+    if (etag) {
+      // Remove the _etag property before saving
+      delete data._etag;
+    }
+    
+    // When updating existing company, ETag is required
+    if (existingCompany && !etag) {
+      throw new BadRequestException(
+        'ETag is required for updates. Retrieve the resource with ?includeETag=true first.'
+      );
     }
     
     // Add metadata
@@ -302,16 +341,23 @@ export class GS1ResolverService {
       ...data,
       id: companyId,
       updatedAt: new Date().toISOString(),
-      createdAt: existingCompany?.createdAt || new Date().toISOString(),
+      createdAt: existingCompany ? existingCompany.data.createdAt : new Date().toISOString(),
     };
     
-    // Save company data
-    const success = await this.gs1Storage.saveCompany(companyId, companyData);
+    // Save company data with ETag validation
+    const success = await this.gs1Storage.saveCompany(companyId, companyData, etag);
     if (!success) {
-      throw new Error(`Failed to save company ${companyId}`);
+      throw new ConflictException(
+        'Concurrency conflict: The company has been modified since you retrieved it. Please get the latest version and try again.'
+      );
     }
     
-    return companyData;
+    // Get the fresh company with new ETag
+    const updatedCompany = await this.gs1Storage.getCompanyWithETag(companyId);
+    return {
+      ...updatedCompany?.data,
+      _etag: updatedCompany?.etag
+    };
   }
 
   /**
@@ -346,47 +392,43 @@ export class GS1ResolverService {
   }
 
   /**
-   * Verify data integrity for a specific entity
-   * Returns a report of integrity checks
+   * Verify ETag-based concurrency control for a specific entity
+   * This tests that ETags are working correctly
    */
-  async verifyIntegrity(entityType: string, entityId: string): Promise<any> {
-    let files: string[] = [];
-    const results: Record<string, boolean> = {};
+  async verifyETagConcurrency(entityType: string, entityId: string): Promise<any> {
+    let entity: any = null;
+    let etag: string | null = null;
     
     switch (entityType) {
       case 'product':
-        files = [
-          `products/${entityId}.json`,
-        ];
+        entity = await this.gs1Storage.getProductWithETag(entityId);
+        etag = entity?.etag || null;
         break;
       case 'company':
-        files = [
-          `companies/${entityId}.json`,
-        ];
+        entity = await this.gs1Storage.getCompanyWithETag(entityId);
+        etag = entity?.etag || null;
         break;
       case 'metadata':
-        files = [
-          'metadata/last_updated.json',
-          'metadata/product_index.json',
-        ];
+        if (entityId === 'system') {
+          entity = await this.gs1Storage.getSystemMetadataWithETag();
+          etag = entity?.etag || null;
+        }
         break;
       default:
         throw new BadRequestException(`Unknown entity type: ${entityType}`);
     }
     
-    for (const file of files) {
-      results[file] = await this.gs1Storage.verifyDataIntegrity(file);
+    if (!entity) {
+      throw new NotFoundException(`Entity not found: ${entityType}/${entityId}`);
     }
-    
-    // Add overall status
-    const hasFailures = Object.values(results).includes(false);
     
     return {
       entityType,
       entityId,
       timestamp: new Date().toISOString(),
-      isValid: !hasFailures,
-      files: results,
+      hasETag: !!etag,
+      etag: etag,
+      concurrencyControlReady: !!etag
     };
   }
 } 

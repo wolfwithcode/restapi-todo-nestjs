@@ -2,7 +2,7 @@
 
 # Start MinIO in the background using Docker Compose
 echo "Starting MinIO..."
-docker-compose -f docker-compose.minio.yml up -d
+docker compose -f docker-compose.minio.yml up -d
 
 # Wait a moment for MinIO to fully initialize
 echo "Waiting for MinIO to start..."
@@ -10,16 +10,16 @@ sleep 5
 
 # Run the GS1 initialization command
 echo "Initializing GS1 identity resolver with sample data..."
-yarn ts-node src/cli.ts --gs1 initialize-gs1
+yarn ts-node src/cli.ts initialize-gs1
 
 # Verify data integrity after initialization
 echo ""
 echo "Verifying data integrity of the system metadata..."
-yarn ts-node src/cli.ts --gs1 verify-integrity -t metadata -i system
+yarn ts-node src/cli.ts verify-integrity -t metadata -i system
 
 echo ""
 echo "Verifying data integrity of a sample product..."
-yarn ts-node src/cli.ts --gs1 verify-integrity -t product -i "01/12345678901234"
+yarn ts-node src/cli.ts verify-integrity -t product -i "01/12345678901234"
 
 echo ""
 echo "GS1 Identity Resolver has been initialized!"

@@ -3,7 +3,7 @@
 # Check if MinIO is running, if not start it
 if ! docker ps | grep -q minio; then
   echo "Starting MinIO..."
-  docker-compose -f docker-compose.minio.yml up -d
+  docker compose -f docker-compose.minio.yml up -d
   sleep 5  # Give MinIO time to start
 fi
 
@@ -31,7 +31,7 @@ if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
 fi
 
 echo "Verifying ETag concurrency control for $ENTITY_TYPE/$ENTITY_ID..."
-yarn ts-node src/cli.ts --gs1 verify-etag -t "$ENTITY_TYPE" -i "$ENTITY_ID"
+yarn ts-node src/cli.ts verify-etag -t "$ENTITY_TYPE" -i "$ENTITY_ID"
 
 # Check the exit status
 if [ $? -eq 0 ]; then

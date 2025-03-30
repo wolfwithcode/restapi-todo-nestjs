@@ -2,7 +2,7 @@
 
 # Start MinIO in the background
 echo "Starting MinIO..."
-docker-compose -f docker-compose.minio.yml up -d
+docker compose -f docker-compose.minio.yml up -d
 
 # Wait for MinIO to start
 echo "Waiting for MinIO to start..."

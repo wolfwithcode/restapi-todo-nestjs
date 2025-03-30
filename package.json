@@ -23,7 +23,9 @@
     "cli:build": "nest build && node dist/cli.js",
     "save-sample": "ts-node src/cli.ts save-sample",
     "gs1:init": "ts-node src/cli.ts --gs1 initialize-gs1",
-    "gs1:start": "./initialize-gs1.sh"
+    "gs1:start": "./initialize-gs1.sh",
+    "gs1:verify": "ts-node src/cli.ts --gs1 verify-integrity",
+    "gs1:verify:script": "./verify-integrity.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.777.0",

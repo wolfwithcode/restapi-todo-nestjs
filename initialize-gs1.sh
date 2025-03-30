@@ -12,6 +12,15 @@ sleep 5
 echo "Initializing GS1 identity resolver with sample data..."
 yarn ts-node src/cli.ts --gs1 initialize-gs1
 
+# Verify data integrity after initialization
+echo ""
+echo "Verifying data integrity of the system metadata..."
+yarn ts-node src/cli.ts --gs1 verify-integrity -t metadata -i system
+
+echo ""
+echo "Verifying data integrity of a sample product..."
+yarn ts-node src/cli.ts --gs1 verify-integrity -t product -i "01/12345678901234"
+
 echo ""
 echo "GS1 Identity Resolver has been initialized!"
 echo "You can access MinIO console at: http://localhost:9001"
@@ -22,4 +31,8 @@ echo "To test the API, try these endpoints:"
 echo "- http://localhost:3000/gs1/products/01/12345678901234"
 echo "- http://localhost:3000/gs1/products/01/12345678901235/10/ABC123"
 echo "- http://localhost:3000/gs1/01/12345678901234 (Digital Link)"
+echo ""
+echo "To verify data integrity via API:"
+echo "- http://localhost:3000/gs1/verify/product/01/12345678901234"
+echo "- http://localhost:3000/gs1/verify/metadata/system"
 echo "" 

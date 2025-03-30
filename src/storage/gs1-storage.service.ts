@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MinioService } from './minio.service';
+import { HashUtil } from '../common/utils/hash.util';
 
 /**
  * Storage service for GS1 Identity Resolver data
@@ -8,14 +9,19 @@ import { MinioService } from './minio.service';
  * gs1-resolver/
  * ├── products/
  * │   ├── {product_id}.json         # Current product information
+ * │   ├── {product_id}.hash         # SHA-256 hash file for data integrity
  * │   └── {product_id}/
  * │       ├── certificates/{cert_id}.json  # Related certificates
+ * │       ├── certificates/{cert_id}.hash  # Certificate hash files
  * │       └── history/{timestamp}.json     # Change history records
  * ├── companies/
- * │   └── {company_id}.json         # Manufacturer information
+ * │   ├── {company_id}.json         # Manufacturer information
+ * │   └── {company_id}.hash         # SHA-256 hash file
  * └── metadata/
  *     ├── last_updated.json         # System-wide update timestamp
- *     └── product_index.json        # Quick lookup index
+ *     ├── last_updated.hash         # Hash for metadata integrity
+ *     ├── product_index.json        # Quick lookup index
+ *     └── product_index.hash        # Hash for index integrity
  */
 @Injectable()
 export class GS1StorageService {
@@ -32,19 +38,111 @@ export class GS1StorageService {
   }
 
   /**
+   * Get hash file key for a given data key
+   */
+  private getHashKey(dataKey: string): string {
+    return dataKey.replace('.json', '.hash');
+  }
+
+  /**
+   * Save data with hash verification
+   */
+  private async saveWithHash(key: string, data: any): Promise<boolean> {
+    try {
+      // Generate hash for data integrity
+      const hash = HashUtil.generateSHA256(data);
+      
+      // Save the actual data
+      const dataSuccess = await this.minioService.uploadFile(key, data);
+      if (!dataSuccess) {
+        this.logger.error(`Failed to save data to ${key}`);
+        return false;
+      }
+      
+      // Save the hash in a separate file
+      const hashKey = this.getHashKey(key);
+      const hashSuccess = await this.minioService.uploadFile(
+        hashKey, 
+        { hash, timestamp: new Date().toISOString() },
+        'application/json'
+      );
+      
+      if (!hashSuccess) {
+        this.logger.error(`Failed to save hash to ${hashKey}`);
+        // Consider rolling back the data save here
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      this.logger.error(`Error saving data with hash: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+
+  /**
+   * Get data with hash verification
+   */
+  private async getWithHashVerification(key: string): Promise<any> {
+    try {
+      // Get the data
+      const data = await this.minioService.getFile(key);
+      if (!data) {
+        return null;
+      }
+      
+      // Get the hash
+      const hashKey = this.getHashKey(key);
+      const hashData = await this.minioService.getFile(hashKey);
+      
+      // If hash file exists, verify data integrity
+      if (hashData && hashData.hash) {
+        const isValid = HashUtil.verifySHA256(data, hashData.hash);
+        if (!isValid) {
+          this.logger.warn(`Data integrity check failed for ${key}`);
+          // You could choose to throw an error here or return null
+          // For now, we're returning the data with a warning
+        }
+      }
+      
+      return data;
+    } catch (error) {
+      this.logger.error(`Error getting data with hash verification: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  /**
    * Get product information
    */
   async getProduct(productId: string): Promise<any> {
     const key = this.getObjectKey(`products/${productId}.json`);
-    return this.minioService.getFile(key);
+    return this.getWithHashVerification(key);
   }
 
   /**
    * Save product information
    */
   async saveProduct(productId: string, data: any): Promise<boolean> {
+    // Perform pre-update hash validation if product already exists
     const key = this.getObjectKey(`products/${productId}.json`);
-    return this.minioService.uploadFile(key, data);
+    
+    if (data._hash) {
+      // If the data contains a _hash field, verify it matches the current data
+      const currentData = await this.minioService.getFile(key);
+      if (currentData) {
+        const currentHash = HashUtil.generateSHA256(currentData);
+        if (currentHash !== data._hash) {
+          this.logger.warn(`Pre-update hash validation failed for ${key}`);
+          return false;
+        }
+        
+        // Remove the _hash field before saving
+        delete data._hash;
+      }
+    }
+    
+    return this.saveWithHash(key, data);
   }
 
   /**
@@ -52,7 +150,7 @@ export class GS1StorageService {
    */
   async getProductCertificate(productId: string, certificateId: string): Promise<any> {
     const key = this.getObjectKey(`products/${productId}/certificates/${certificateId}.json`);
-    return this.minioService.getFile(key);
+    return this.getWithHashVerification(key);
   }
 
   /**
@@ -60,7 +158,7 @@ export class GS1StorageService {
    */
   async saveProductCertificate(productId: string, certificateId: string, data: any): Promise<boolean> {
     const key = this.getObjectKey(`products/${productId}/certificates/${certificateId}.json`);
-    return this.minioService.uploadFile(key, data);
+    return this.saveWithHash(key, data);
   }
 
   /**
@@ -76,10 +174,12 @@ export class GS1StorageService {
       timestamp,
       metadata: {
         recordedAt: new Date().toISOString(),
-        checksum: this.generateChecksum(data),
+        hash: HashUtil.generateSHA256(data)
       }
     };
     
+    // History records don't need separate hash files since they include the hash
+    // and are immutable once written
     return this.minioService.uploadFile(key, historyData);
   }
 
@@ -110,15 +210,32 @@ export class GS1StorageService {
    */
   async getCompany(companyId: string): Promise<any> {
     const key = this.getObjectKey(`companies/${companyId}.json`);
-    return this.minioService.getFile(key);
+    return this.getWithHashVerification(key);
   }
 
   /**
    * Save company information
    */
   async saveCompany(companyId: string, data: any): Promise<boolean> {
+    // Perform pre-update hash validation if company already exists
     const key = this.getObjectKey(`companies/${companyId}.json`);
-    return this.minioService.uploadFile(key, data);
+    
+    if (data._hash) {
+      // If the data contains a _hash field, verify it matches the current data
+      const currentData = await this.minioService.getFile(key);
+      if (currentData) {
+        const currentHash = HashUtil.generateSHA256(currentData);
+        if (currentHash !== data._hash) {
+          this.logger.warn(`Pre-update hash validation failed for ${key}`);
+          return false;
+        }
+        
+        // Remove the _hash field before saving
+        delete data._hash;
+      }
+    }
+    
+    return this.saveWithHash(key, data);
   }
 
   /**
@@ -126,7 +243,7 @@ export class GS1StorageService {
    */
   async getSystemMetadata(): Promise<any> {
     const key = this.getObjectKey('metadata/last_updated.json');
-    return this.minioService.getFile(key);
+    return this.getWithHashVerification(key);
   }
 
   /**
@@ -136,7 +253,7 @@ export class GS1StorageService {
     const key = this.getObjectKey('metadata/last_updated.json');
     
     // Get existing data and merge
-    const existingData = await this.minioService.getFile(key) || {};
+    const existingData = await this.getWithHashVerification(key) || {};
     const updatedData = {
       ...existingData,
       ...data,
@@ -144,7 +261,7 @@ export class GS1StorageService {
       version: (existingData.version || 0) + 1,
     };
     
-    return this.minioService.uploadFile(key, updatedData);
+    return this.saveWithHash(key, updatedData);
   }
 
   /**
@@ -152,7 +269,7 @@ export class GS1StorageService {
    */
   async getProductIndex(): Promise<any> {
     const key = this.getObjectKey('metadata/product_index.json');
-    return this.minioService.getFile(key);
+    return this.getWithHashVerification(key);
   }
 
   /**
@@ -165,10 +282,11 @@ export class GS1StorageService {
     const key = this.getObjectKey('metadata/product_index.json');
     
     // Get existing index
-    const existingIndex = await this.minioService.getFile(key) || { products: {} };
+    const existingIndex = await this.getWithHashVerification(key) || { products: {} };
     
     // Update the specific product entry
     existingIndex.products[productId] = {
+      ...existingIndex.products[productId],
       ...indexData,
       updatedAt: new Date().toISOString(),
     };
@@ -176,7 +294,7 @@ export class GS1StorageService {
     // Update lastUpdated timestamp
     existingIndex.lastUpdated = new Date().toISOString();
     
-    return this.minioService.uploadFile(key, existingIndex);
+    return this.saveWithHash(key, existingIndex);
   }
 
   /**
@@ -191,7 +309,8 @@ export class GS1StorageService {
         initialized: true,
       };
       
-      await this.updateSystemMetadata(systemMetadata);
+      const metadataKey = this.getObjectKey('metadata/last_updated.json');
+      await this.saveWithHash(metadataKey, systemMetadata);
       
       // Create initial product index
       const productIndex = {
@@ -200,9 +319,9 @@ export class GS1StorageService {
       };
       
       const indexKey = this.getObjectKey('metadata/product_index.json');
-      await this.minioService.uploadFile(indexKey, productIndex);
+      await this.saveWithHash(indexKey, productIndex);
       
-      this.logger.log('GS1 identity resolver structure initialized');
+      this.logger.log('GS1 identity resolver structure initialized with data integrity mechanisms');
       return true;
     } catch (error) {
       this.logger.error(`Failed to initialize GS1 structure: ${error instanceof Error ? error.message : String(error)}`);
@@ -211,20 +330,46 @@ export class GS1StorageService {
   }
 
   /**
-   * Generate a simple checksum for data verification
-   * In a production environment, use a cryptographic hash
+   * Verify data integrity for a specific file
    */
-  private generateChecksum(data: any): string {
-    // Simple implementation for demo purposes
-    const jsonStr = JSON.stringify(data);
-    let hash = 0;
+  async verifyDataIntegrity(key: string): Promise<boolean> {
+    const fullKey = this.getObjectKey(key);
     
-    for (let i = 0; i < jsonStr.length; i++) {
-      const char = jsonStr.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
+    // Get the data and hash file
+    const data = await this.minioService.getFile(fullKey);
+    if (!data) {
+      this.logger.warn(`File not found: ${fullKey}`);
+      return false;
     }
     
-    return hash.toString(16);
+    const hashKey = this.getHashKey(fullKey);
+    const hashData = await this.minioService.getFile(hashKey);
+    
+    if (!hashData || !hashData.hash) {
+      this.logger.warn(`Hash file not found: ${hashKey}`);
+      return false;
+    }
+    
+    // Verify data integrity
+    const isValid = HashUtil.verifySHA256(data, hashData.hash);
+    if (!isValid) {
+      this.logger.warn(`Data integrity check failed for ${fullKey}`);
+    }
+    
+    return isValid;
+  }
+
+  /**
+   * Get the current hash of an object, used for pre-update validation
+   */
+  async getCurrentHash(key: string): Promise<string | null> {
+    const fullKey = this.getObjectKey(key);
+    const data = await this.minioService.getFile(fullKey);
+    
+    if (!data) {
+      return null;
+    }
+    
+    return HashUtil.generateSHA256(data);
   }
 } 

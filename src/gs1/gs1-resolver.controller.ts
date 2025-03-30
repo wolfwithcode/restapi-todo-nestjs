@@ -7,7 +7,8 @@ import {
   Param, 
   Body, 
   NotFoundException,
-  Logger
+  Logger,
+  Query
 } from '@nestjs/common';
 import { GS1ResolverService } from './gs1-resolver.service';
 
@@ -34,10 +35,32 @@ export class GS1ResolverController {
     return this.gs1Service.getProductIndex();
   }
 
+  // Data Integrity Verification endpoints
+  
+  @Get('verify/:entityType/:entityId')
+  async verifyIntegrity(
+    @Param('entityType') entityType: string,
+    @Param('entityId') entityId: string
+  ) {
+    return this.gs1Service.verifyIntegrity(entityType, entityId);
+  }
+
+  @Get('verify/metadata')
+  async verifyMetadataIntegrity() {
+    return this.gs1Service.verifyIntegrity('metadata', 'system');
+  }
+
   // Products
   
   @Get('products/:productId')
-  async getProduct(@Param('productId') productId: string) {
+  async getProduct(
+    @Param('productId') productId: string,
+    @Query('includeHash') includeHash?: string
+  ) {
+    if (includeHash === 'true') {
+      this.logger.log(`Getting product ${productId} with hash for update validation`);
+      return this.gs1Service.getProductWithHash(productId);
+    }
     return this.gs1Service.getProduct(productId);
   }
 
@@ -75,6 +98,24 @@ export class GS1ResolverController {
     return this.gs1Service.getProductCertificates(productId);
   }
 
+  @Get('products/:productId/certificates/:certificateId')
+  async getProductCertificate(
+    @Param('productId') productId: string,
+    @Param('certificateId') certificateId: string,
+    @Query('includeHash') includeHash?: string
+  ) {
+    if (includeHash === 'true') {
+      return this.gs1Service.getCertificateWithHash(productId, certificateId);
+    }
+    // For regular certificate access, fetch from certificates list
+    const certificates = await this.gs1Service.getProductCertificates(productId);
+    const certificate = certificates.find(c => c.id === certificateId);
+    if (!certificate) {
+      throw new NotFoundException(`Certificate with ID ${certificateId} not found`);
+    }
+    return certificate;
+  }
+
   @Post('products/:productId/certificates')
   async addProductCertificate(
     @Param('productId') productId: string,
@@ -86,7 +127,14 @@ export class GS1ResolverController {
   // Companies
   
   @Get('companies/:companyId')
-  async getCompany(@Param('companyId') companyId: string) {
+  async getCompany(
+    @Param('companyId') companyId: string,
+    @Query('includeHash') includeHash?: string
+  ) {
+    if (includeHash === 'true') {
+      this.logger.log(`Getting company ${companyId} with hash for update validation`);
+      return this.gs1Service.getCompanyWithHash(companyId);
+    }
     return this.gs1Service.getCompany(companyId);
   }
 

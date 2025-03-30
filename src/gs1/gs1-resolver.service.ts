@@ -1,5 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { GS1StorageService } from '../storage/gs1-storage.service';
+import { HashUtil } from '../common/utils/hash.util';
 
 /**
  * Service for GS1 identity resolver operations
@@ -29,11 +30,40 @@ export class GS1ResolverService {
   }
 
   /**
+   * Get product with hash for update operations
+   * This includes the current hash for pre-update validation
+   */
+  async getProductWithHash(productId: string): Promise<any> {
+    const product = await this.getProduct(productId);
+    if (product) {
+      // Add current hash for pre-update validation
+      const productKey = `products/${productId}.json`;
+      const currentHash = await this.gs1Storage.getCurrentHash(productKey);
+      if (currentHash) {
+        product._hash = currentHash;
+      }
+    }
+    return product;
+  }
+
+  /**
    * Create or update product information
    */
   async upsertProduct(productId: string, data: any): Promise<any> {
     // Get current product data (if exists)
     const existingProduct = await this.gs1Storage.getProduct(productId);
+    
+    // Validate hash if this is an update and hash was provided
+    if (existingProduct && data._hash) {
+      const productKey = `products/${productId}.json`;
+      const currentHash = await this.gs1Storage.getCurrentHash(productKey);
+      
+      if (currentHash && currentHash !== data._hash) {
+        throw new BadRequestException(
+          'Data integrity check failed: The product has been modified since you retrieved it'
+        );
+      }
+    }
     
     // Add metadata
     const productData = {
@@ -119,6 +149,30 @@ export class GS1ResolverService {
     }
     
     return certificates;
+  }
+
+  /**
+   * Get certificate with hash for update operations
+   */
+  async getCertificateWithHash(productId: string, certificateId: string): Promise<any> {
+    const product = await this.gs1Storage.getProduct(productId);
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${productId} not found`);
+    }
+    
+    const certificate = await this.gs1Storage.getProductCertificate(productId, certificateId);
+    if (!certificate) {
+      throw new NotFoundException(`Certificate with ID ${certificateId} not found`);
+    }
+    
+    // Add current hash for pre-update validation
+    const certKey = `products/${productId}/certificates/${certificateId}.json`;
+    const currentHash = await this.gs1Storage.getCurrentHash(certKey);
+    if (currentHash) {
+      certificate._hash = currentHash;
+    }
+    
+    return certificate;
   }
 
   /**
@@ -210,14 +264,45 @@ export class GS1ResolverService {
   }
 
   /**
+   * Get company with hash for update operations
+   */
+  async getCompanyWithHash(companyId: string): Promise<any> {
+    const company = await this.getCompany(companyId);
+    if (company) {
+      // Add current hash for pre-update validation
+      const companyKey = `companies/${companyId}.json`;
+      const currentHash = await this.gs1Storage.getCurrentHash(companyKey);
+      if (currentHash) {
+        company._hash = currentHash;
+      }
+    }
+    return company;
+  }
+
+  /**
    * Create or update company information
    */
   async upsertCompany(companyId: string, data: any): Promise<any> {
+    // Validate hash if this is an update and hash was provided
+    const existingCompany = await this.gs1Storage.getCompany(companyId);
+    
+    if (existingCompany && data._hash) {
+      const companyKey = `companies/${companyId}.json`;
+      const currentHash = await this.gs1Storage.getCurrentHash(companyKey);
+      
+      if (currentHash && currentHash !== data._hash) {
+        throw new BadRequestException(
+          'Data integrity check failed: The company has been modified since you retrieved it'
+        );
+      }
+    }
+    
     // Add metadata
     const companyData = {
       ...data,
       id: companyId,
       updatedAt: new Date().toISOString(),
+      createdAt: existingCompany?.createdAt || new Date().toISOString(),
     };
     
     // Save company data
@@ -258,5 +343,50 @@ export class GS1ResolverService {
     });
     
     return result;
+  }
+
+  /**
+   * Verify data integrity for a specific entity
+   * Returns a report of integrity checks
+   */
+  async verifyIntegrity(entityType: string, entityId: string): Promise<any> {
+    let files: string[] = [];
+    const results: Record<string, boolean> = {};
+    
+    switch (entityType) {
+      case 'product':
+        files = [
+          `products/${entityId}.json`,
+        ];
+        break;
+      case 'company':
+        files = [
+          `companies/${entityId}.json`,
+        ];
+        break;
+      case 'metadata':
+        files = [
+          'metadata/last_updated.json',
+          'metadata/product_index.json',
+        ];
+        break;
+      default:
+        throw new BadRequestException(`Unknown entity type: ${entityType}`);
+    }
+    
+    for (const file of files) {
+      results[file] = await this.gs1Storage.verifyDataIntegrity(file);
+    }
+    
+    // Add overall status
+    const hasFailures = Object.values(results).includes(false);
+    
+    return {
+      entityType,
+      entityId,
+      timestamp: new Date().toISOString(),
+      isValid: !hasFailures,
+      files: results,
+    };
   }
 } 

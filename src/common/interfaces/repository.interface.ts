@@ -1,7 +1,7 @@
 /**
  * Repository Provider Interface
- * 
- * This file defines a TypeScript interface for a repository provider, 
+ *
+ * This file defines a TypeScript interface for a repository provider,
  * which is a common pattern in software architecture for abstracting data access operations.
  */
 
@@ -17,7 +17,7 @@ export type SaveParams = {
 
 /**
  * Repository Provider Interface
- * 
+ *
  * Defines four standard CRUD operations:
  * - save: Stores data with the given parameters
  * - one: Retrieves a single item by ID
@@ -52,4 +52,4 @@ export interface IRepositoryProvider {
    * @returns A promise resolving to void
    */
   delete(id: string): Promise<void>;
-} 
+}

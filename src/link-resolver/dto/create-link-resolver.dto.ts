@@ -1,4 +1,11 @@
-import { IsString, IsBoolean, IsOptional, IsArray, IsObject, IsISO8601, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsBoolean,
+  IsOptional,
+  IsArray,
+  IsObject,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { Linkset, Response } from '../entities/link-resolver.entity';
 
@@ -73,4 +80,4 @@ export class ResponseDto implements Response {
 
   @IsBoolean()
   defaultIanaLanguage: boolean;
-} 
+}

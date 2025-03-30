@@ -1,4 +1,11 @@
-import { IsString, IsBoolean, IsOptional, IsArray, IsObject, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsBoolean,
+  IsOptional,
+  IsArray,
+  IsObject,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { Linkset, Response } from '../entities/link-resolver.entity';
 import { ResponseDto } from './create-link-resolver.dto';
@@ -43,4 +50,4 @@ export class UpdateLinkResolverDto {
   @ValidateNested({ each: true })
   @Type(() => ResponseDto)
   responses?: Response[];
-} 
+}

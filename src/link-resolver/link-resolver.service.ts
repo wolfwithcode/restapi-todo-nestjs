@@ -6,12 +6,16 @@ import { UpdateLinkResolverDto } from './dto/update-link-resolver.dto';
 
 @Injectable()
 export class LinkResolverService {
-  constructor(private readonly linkResolverRepository: LinkResolverRepository) {}
+  constructor(
+    private readonly linkResolverRepository: LinkResolverRepository,
+  ) {}
 
   /**
    * Creates a new Link Resolver
    */
-  async create(createLinkResolverDto: CreateLinkResolverDto): Promise<LinkResolver> {
+  async create(
+    createLinkResolverDto: CreateLinkResolverDto,
+  ): Promise<LinkResolver> {
     const linkResolver = new LinkResolver({
       ...createLinkResolverDto,
       createdAt: new Date(),
@@ -22,7 +26,7 @@ export class LinkResolverService {
       linkResolver.namespace,
       linkResolver.identificationKeyType,
       linkResolver.identificationKey,
-      linkResolver.qualifierPath || ''
+      linkResolver.qualifierPath || '',
     );
 
     await this.linkResolverRepository.save(linkResolver);
@@ -40,7 +44,9 @@ export class LinkResolverService {
    * Finds a Link Resolver by ID
    */
   async findOne(id: string): Promise<LinkResolver> {
-    const linkResolver = await this.linkResolverRepository.one<LinkResolver>(id);
+    const linkResolver = await this.linkResolverRepository.one<LinkResolver>(
+      id,
+    );
     if (!linkResolver) {
       throw new NotFoundException(`Link Resolver with ID "${id}" not found`);
     }
@@ -54,34 +60,37 @@ export class LinkResolverService {
     namespace: string,
     identificationKeyType: string,
     identificationKey: string,
-    qualifierPath = ''
+    qualifierPath = '',
   ): Promise<LinkResolver> {
     const linkResolver = await this.linkResolverRepository.getByComponents(
       namespace,
       identificationKeyType,
       identificationKey,
-      qualifierPath
+      qualifierPath,
     );
-    
+
     if (!linkResolver) {
       throw new NotFoundException(`Link Resolver not found`);
     }
-    
+
     return linkResolver;
   }
 
   /**
    * Updates a Link Resolver
    */
-  async update(id: string, updateLinkResolverDto: UpdateLinkResolverDto): Promise<LinkResolver> {
+  async update(
+    id: string,
+    updateLinkResolverDto: UpdateLinkResolverDto,
+  ): Promise<LinkResolver> {
     const linkResolver = await this.findOne(id);
-    
+
     // Merge updates
     Object.assign(linkResolver, updateLinkResolverDto);
-    
+
     // Save the updated resolver
     await this.linkResolverRepository.save(linkResolver);
-    
+
     return linkResolver;
   }
 
@@ -89,7 +98,8 @@ export class LinkResolverService {
    * Removes a Link Resolver
    */
   async remove(id: string): Promise<void> {
-    const linkResolver = await this.findOne(id);
+    // Verify the resolver exists before deletion
+    await this.findOne(id);
     await this.linkResolverRepository.delete(id);
   }
 
@@ -104,7 +114,7 @@ export class LinkResolverService {
     context?: string,
     linkType?: string,
     mimeType?: string,
-    language?: string
+    language?: string,
   ): Promise<{
     resolver: LinkResolver;
     response: any;
@@ -115,60 +125,63 @@ export class LinkResolverService {
       namespace,
       identificationKeyType,
       identificationKey,
-      qualifierPath
+      qualifierPath,
     );
-    
+
     if (!resolver.active) {
       throw new NotFoundException('Link Resolver is not active');
     }
-    
+
     // Filter responses
     let matchingResponses = [...resolver.responses];
-    
+
     // Apply filters
     if (context) {
-      matchingResponses = matchingResponses.filter(r => 
-        r.context === context || (r.defaultContext && !context)
+      matchingResponses = matchingResponses.filter(
+        (r) => r.context === context || (r.defaultContext && !context),
       );
     } else {
-      matchingResponses = matchingResponses.filter(r => r.defaultContext);
+      matchingResponses = matchingResponses.filter((r) => r.defaultContext);
     }
-    
+
     if (linkType) {
-      matchingResponses = matchingResponses.filter(r => 
-        r.linkType === linkType || (r.defaultLinkType && !linkType)
+      matchingResponses = matchingResponses.filter(
+        (r) => r.linkType === linkType || (r.defaultLinkType && !linkType),
       );
     } else {
-      matchingResponses = matchingResponses.filter(r => r.defaultLinkType);
+      matchingResponses = matchingResponses.filter((r) => r.defaultLinkType);
     }
-    
+
     if (mimeType) {
-      matchingResponses = matchingResponses.filter(r => 
-        r.mimeType === mimeType || (r.defaultMimeType && !mimeType)
+      matchingResponses = matchingResponses.filter(
+        (r) => r.mimeType === mimeType || (r.defaultMimeType && !mimeType),
       );
     } else {
-      matchingResponses = matchingResponses.filter(r => r.defaultMimeType);
+      matchingResponses = matchingResponses.filter((r) => r.defaultMimeType);
     }
-    
+
     if (language) {
-      matchingResponses = matchingResponses.filter(r => 
-        r.ianaLanguage === language || (r.defaultIanaLanguage && !language)
+      matchingResponses = matchingResponses.filter(
+        (r) =>
+          r.ianaLanguage === language || (r.defaultIanaLanguage && !language),
       );
     } else {
-      matchingResponses = matchingResponses.filter(r => r.defaultIanaLanguage);
+      matchingResponses = matchingResponses.filter(
+        (r) => r.defaultIanaLanguage,
+      );
     }
-    
+
     // Get the best response
     const response = matchingResponses.length > 0 ? matchingResponses[0] : null;
-    
+
     if (!response) {
       throw new NotFoundException('No matching response found');
     }
-    
+
     return {
       resolver,
       response,
-      linkHeaderText: resolver.linkHeaderText
+      linkHeaderText: resolver.linkHeaderText,
     };
   }
-} 
+}

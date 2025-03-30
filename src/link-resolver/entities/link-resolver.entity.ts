@@ -1,6 +1,6 @@
 /**
  * Link Resolver Entity
- * 
+ *
  * This entity represents the Link Resolver data model used to:
  * 1. Store the link resolver configuration for a specific identifier
  * 2. Store metadata for a specific identifier
@@ -49,7 +49,10 @@ export class LinkResolver {
   active: boolean;
   responses: Response[];
 
+  // Add index signature to allow dynamic property access
+  [key: string]: any;
+
   constructor(partial: Partial<LinkResolver>) {
     Object.assign(this, partial);
   }
-} 
+}

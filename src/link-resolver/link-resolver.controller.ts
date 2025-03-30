@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Redirect, Header, NotFoundException, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  Header,
+  NotFoundException,
+  HttpStatus,
+} from '@nestjs/common';
 import { LinkResolverService } from './link-resolver.service';
 import { CreateLinkResolverDto } from './dto/create-link-resolver.dto';
 import { UpdateLinkResolverDto } from './dto/update-link-resolver.dto';
@@ -9,7 +21,9 @@ export class LinkResolverController {
   constructor(private readonly linkResolverService: LinkResolverService) {}
 
   @Post()
-  async create(@Body() createLinkResolverDto: CreateLinkResolverDto): Promise<LinkResolver> {
+  async create(
+    @Body() createLinkResolverDto: CreateLinkResolverDto,
+  ): Promise<LinkResolver> {
     return this.linkResolverService.create(createLinkResolverDto);
   }
 
@@ -21,12 +35,13 @@ export class LinkResolverController {
     @Query('active') active?: boolean,
   ): Promise<LinkResolver[]> {
     const filter: Partial<LinkResolver> = {};
-    
+
     if (namespace) filter.namespace = namespace;
-    if (identificationKeyType) filter.identificationKeyType = identificationKeyType;
+    if (identificationKeyType)
+      filter.identificationKeyType = identificationKeyType;
     if (identificationKey) filter.identificationKey = identificationKey;
     if (active !== undefined) filter.active = active;
-    
+
     return this.linkResolverService.findAll(filter);
   }
 
@@ -73,22 +88,22 @@ export class LinkResolverController {
         context,
         linkType,
         mimeType,
-        language
+        language,
       );
-      
+
       // If redirect query param is true, redirect to the target URL
       if (redirect === 'true' && result.response.targetUrl) {
-        return { 
+        return {
           statusCode: HttpStatus.FOUND,
-          url: result.response.targetUrl 
+          url: result.response.targetUrl,
         };
       }
-      
+
       // Otherwise return the response data
       return {
         resolver: result.resolver,
         response: result.response,
-        linkHeaderText: result.linkHeaderText
+        linkHeaderText: result.linkHeaderText,
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -118,7 +133,7 @@ export class LinkResolverController {
     if (!qualifierPath.startsWith('/')) {
       qualifierPath = '/' + qualifierPath;
     }
-    
+
     try {
       const result = await this.linkResolverService.resolveLink(
         namespace,
@@ -128,22 +143,22 @@ export class LinkResolverController {
         context,
         linkType,
         mimeType,
-        language
+        language,
       );
-      
+
       // If redirect query param is true, redirect to the target URL
       if (redirect === 'true' && result.response.targetUrl) {
-        return { 
+        return {
           statusCode: HttpStatus.FOUND,
-          url: result.response.targetUrl 
+          url: result.response.targetUrl,
         };
       }
-      
+
       // Otherwise return the response data
       return {
         resolver: result.resolver,
         response: result.response,
-        linkHeaderText: result.linkHeaderText
+        linkHeaderText: result.linkHeaderText,
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -152,4 +167,4 @@ export class LinkResolverController {
       throw new NotFoundException('Failed to resolve link');
     }
   }
-} 
+}

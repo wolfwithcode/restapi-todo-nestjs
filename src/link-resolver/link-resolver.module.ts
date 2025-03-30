@@ -6,6 +6,6 @@ import { LinkResolverRepository } from './repositories/link-resolver.repository'
 @Module({
   controllers: [LinkResolverController],
   providers: [LinkResolverService, LinkResolverRepository],
-  exports: [LinkResolverService]
+  exports: [LinkResolverService],
 })
-export class LinkResolverModule {} 
+export class LinkResolverModule {}

@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { IRepositoryProvider, SaveParams } from '../../common/interfaces/repository.interface';
+import {
+  IRepositoryProvider,
+  SaveParams,
+} from '../../common/interfaces/repository.interface';
 import { LinkResolver } from '../entities/link-resolver.entity';
 
 /**
  * Link Resolver Repository
- * 
+ *
  * Implements the IRepositoryProvider interface for the Link Resolver entity.
  * This repository is responsible for storing and retrieving link resolver data.
  */
@@ -16,7 +19,12 @@ export class LinkResolverRepository implements IRepositoryProvider {
   /**
    * Generates an ID based on parameters
    */
-  generateId(namespace: string, identificationKeyType: string, identificationKey: string, qualifierPath = ''): string {
+  generateId(
+    namespace: string,
+    identificationKeyType: string,
+    identificationKey: string,
+    qualifierPath = '',
+  ): string {
     return `${namespace}/${identificationKeyType}/${identificationKey}${qualifierPath}`;
   }
 
@@ -25,27 +33,27 @@ export class LinkResolverRepository implements IRepositoryProvider {
    */
   async save(data: SaveParams): Promise<void> {
     const linkResolver = data as unknown as LinkResolver;
-    
+
     // If no ID is provided, generate one
     if (!linkResolver.id) {
       linkResolver.id = this.generateId(
         linkResolver.namespace,
         linkResolver.identificationKeyType,
         linkResolver.identificationKey,
-        linkResolver.qualifierPath || ''
+        linkResolver.qualifierPath || '',
       );
     }
-    
+
     // Set createdAt if not provided
     if (!linkResolver.createdAt) {
       linkResolver.createdAt = new Date();
     }
-    
+
     // Generate link header text if not provided
     if (!linkResolver.linkHeaderText && linkResolver.responses?.length > 0) {
       linkResolver.linkHeaderText = this.generateLinkHeaderText(linkResolver);
     }
-    
+
     this.items[linkResolver.id] = linkResolver;
   }
 
@@ -63,9 +71,14 @@ export class LinkResolverRepository implements IRepositoryProvider {
     namespace: string,
     identificationKeyType: string,
     identificationKey: string,
-    qualifierPath = ''
+    qualifierPath = '',
   ): Promise<LinkResolver | null> {
-    const id = this.generateId(namespace, identificationKeyType, identificationKey, qualifierPath);
+    const id = this.generateId(
+      namespace,
+      identificationKeyType,
+      identificationKey,
+      qualifierPath,
+    );
     return this.one<LinkResolver>(id);
   }
 
@@ -74,22 +87,22 @@ export class LinkResolverRepository implements IRepositoryProvider {
    */
   async all<T>(filter?: any): Promise<T[]> {
     let result = Object.values(this.items) as unknown as T[];
-    
+
     if (filter) {
       result = result.filter((item) => {
         const linkResolver = item as unknown as LinkResolver;
-        
+
         // Apply filters
         for (const [key, value] of Object.entries(filter)) {
           if (linkResolver[key] !== value) {
             return false;
           }
         }
-        
+
         return true;
       });
     }
-    
+
     return result;
   }
 
@@ -106,7 +119,7 @@ export class LinkResolverRepository implements IRepositoryProvider {
    */
   private generateLinkHeaderText(linkResolver: LinkResolver): string {
     const links: string[] = [];
-    
+
     // Add each response as a link
     for (const response of linkResolver.responses) {
       if (response.active) {
@@ -114,13 +127,13 @@ export class LinkResolverRepository implements IRepositoryProvider {
         links.push(link);
       }
     }
-    
+
     // Add the sameAs link
     const anchor = linkResolver.linkset?.anchor;
     if (anchor) {
       links.push(`<${anchor}>; rel="owl:sameAs"`);
     }
-    
+
     return links.join(', ');
   }
-} 
+}

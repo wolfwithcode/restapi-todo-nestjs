@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { LinkResolverRepository } from './repositories/link-resolver.repository';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { IRepositoryProvider } from '../common/interfaces/repository.interface';
 import { LinkResolver } from './entities/link-resolver.entity';
 import { CreateLinkResolverDto } from './dto/create-link-resolver.dto';
 import { UpdateLinkResolverDto } from './dto/update-link-resolver.dto';
@@ -7,7 +7,8 @@ import { UpdateLinkResolverDto } from './dto/update-link-resolver.dto';
 @Injectable()
 export class LinkResolverService {
   constructor(
-    private readonly linkResolverRepository: LinkResolverRepository,
+    @Inject('LINK_RESOLVER_REPOSITORY')
+    private readonly linkResolverRepository: IRepositoryProvider,
   ) {}
 
   /**
@@ -21,13 +22,15 @@ export class LinkResolverService {
       createdAt: new Date(),
     });
 
-    // Generate the ID
-    linkResolver.id = this.linkResolverRepository.generateId(
-      linkResolver.namespace,
-      linkResolver.identificationKeyType,
-      linkResolver.identificationKey,
-      linkResolver.qualifierPath || '',
-    );
+    // Generate the ID if repository provides this method
+    if ('generateId' in this.linkResolverRepository) {
+      linkResolver.id = (this.linkResolverRepository as any).generateId(
+        linkResolver.namespace,
+        linkResolver.identificationKeyType,
+        linkResolver.identificationKey,
+        linkResolver.qualifierPath || '',
+      );
+    }
 
     await this.linkResolverRepository.save(linkResolver);
     return linkResolver;
@@ -62,18 +65,38 @@ export class LinkResolverService {
     identificationKey: string,
     qualifierPath = '',
   ): Promise<LinkResolver> {
-    const linkResolver = await this.linkResolverRepository.getByComponents(
-      namespace,
-      identificationKeyType,
-      identificationKey,
-      qualifierPath,
-    );
-
-    if (!linkResolver) {
-      throw new NotFoundException(`Link Resolver not found`);
+    // Use repository's getByComponents method if available
+    if ('getByComponents' in this.linkResolverRepository) {
+      const linkResolver = await (this.linkResolverRepository as any).getByComponents(
+        namespace,
+        identificationKeyType,
+        identificationKey,
+        qualifierPath,
+      );
+      
+      if (!linkResolver) {
+        throw new NotFoundException(`Link Resolver not found`);
+      }
+      
+      return linkResolver;
     }
-
-    return linkResolver;
+    
+    // Otherwise, generate ID and use the one method
+    let id: string;
+    
+    if ('generateId' in this.linkResolverRepository) {
+      id = (this.linkResolverRepository as any).generateId(
+        namespace,
+        identificationKeyType,
+        identificationKey,
+        qualifierPath,
+      );
+    } else {
+      // Use a default ID format if the repository doesn't provide a generator
+      id = `${namespace}/${identificationKeyType}/${identificationKey}${qualifierPath}`;
+    }
+    
+    return this.findOne(id);
   }
 
   /**

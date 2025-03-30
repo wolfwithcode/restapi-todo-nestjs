@@ -7,6 +7,7 @@ import { TodoModule } from './todo/todo.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
 import { LinkResolverModule } from './link-resolver/link-resolver.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { LinkResolverModule } from './link-resolver/link-resolver.module';
     TodoModule,
     PrismaModule,
     LinkResolverModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { Request } from 'express';
 import * as cookieParser from 'cookie-parser';
 import * as csurf from 'csurf';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -28,6 +29,18 @@ async function bootstrap() {
       },
     }),
   );
-  await app.listen(process.env.PORT || 3005);
+  
+  // Setup Swagger documentation
+  const config = new DocumentBuilder()
+    .setTitle('NestJS API')
+    .setDescription('NestJS API with ETag-based concurrency control')
+    .setVersion('1.0')
+    .addTag('GS1 Identity Resolver')
+    .addTag('Link Resolver')
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document);
+
+  await app.listen(process.env.PORT || 3006);
 }
 bootstrap();

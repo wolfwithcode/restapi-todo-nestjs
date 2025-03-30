@@ -24,16 +24,16 @@ export class MinioService implements OnModuleInit {
     this.bucket = storageConfig.bucket;
     
     this.s3Client = new S3Client({
-      region: storageConfig.region,
-      endpoint: `http${storageConfig.useSSL ? 's' : ''}://${storageConfig.endpoint}:${storageConfig.port}`,
+      region: 'us-east-1', // Default region
+      endpoint: 'http://135.181.26.126:9000', // Hardcoded endpoint with API port
       forcePathStyle: true, // Needed for MinIO
       credentials: {
-        accessKeyId: storageConfig.accessKey,
-        secretAccessKey: storageConfig.secretKey,
+        accessKeyId: 'minioadmin',
+        secretAccessKey: 'minioadmin',
       },
     });
     
-    this.logger.log(`MinIO service initialized: endpoint=${storageConfig.endpoint}, bucket=${this.bucket}`);
+    this.logger.log(`MinIO service initialized: endpoint=135.181.26.126:9000, bucket=${this.bucket}`);
   }
 
   async onModuleInit() {

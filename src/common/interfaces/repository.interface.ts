@@ -1,29 +1,8 @@
-/**
- * Repository Provider Interface
- *
- * This file defines a TypeScript interface for a repository provider,
- * which is a common pattern in software architecture for abstracting data access operations.
- */
-
-/**
- * Defines the structure for data being saved
- * Requires an id property as a string
- * Allows any additional properties
- */
 export type SaveParams = {
   id: string;
   [k: string]: any;
 };
 
-/**
- * Repository Provider Interface
- *
- * Defines four standard CRUD operations:
- * - save: Stores data with the given parameters
- * - one: Retrieves a single item by ID
- * - all: Retrieves all items of a specific category
- * - delete: Removes an item by ID
- */
 export interface IRepositoryProvider {
   /**
    * Stores data with the given parameters

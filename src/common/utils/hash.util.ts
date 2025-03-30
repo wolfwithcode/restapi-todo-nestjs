@@ -1,12 +1,9 @@
 import { createHash } from 'crypto';
 
-/**
- * Utility class for handling SHA-256 hash operations
- */
 export class HashUtil {
   /**
    * Generate a SHA-256 hash of the provided data
-   * 
+   *
    * @param data Any data that can be converted to string
    * @returns SHA-256 hash as hexadecimal string
    */
@@ -17,7 +14,7 @@ export class HashUtil {
 
   /**
    * Verify if the provided hash matches the hash of the data
-   * 
+   *
    * @param data Data to verify
    * @param hash Expected hash
    * @returns Boolean indicating if hash matches
@@ -26,4 +23,4 @@ export class HashUtil {
     const calculatedHash = this.generateSHA256(data);
     return calculatedHash === hash;
   }
-} 
+}

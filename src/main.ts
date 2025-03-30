@@ -8,13 +8,15 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      forbidNonWhitelisted: true, // Replaces whitelist
+      transform: true, // Enables automatic type transformation
+    }),
+  );
   app.enableCors({
     credentials: true,
-    origin: [
-      'http://localhost:3000',
-      'https://frontend-todo-nextjs.vercel.app',
-    ],
+    origin: ['http://localhost:3000'],
   });
   app.use(cookieParser());
   app.use(
@@ -29,7 +31,7 @@ async function bootstrap() {
       },
     }),
   );
-  
+
   // Setup Swagger documentation
   const config = new DocumentBuilder()
     .setTitle('NestJS API')
@@ -43,4 +45,5 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT || 3006);
 }
+
 bootstrap();

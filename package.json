@@ -1,8 +1,8 @@
 {
-  "name": "api-lesson",
+  "name": "demo-optimized-storage-flow",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "A demo of optimized architecture recommendations.",
+  "author": "Le Duc Anh",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
@@ -27,12 +27,16 @@
     "gs1:verify": "ts-node src/cli.ts verify-integrity",
     "gs1:verify:script": "./verify-integrity.sh",
     "gs1:verify:etag": "ts-node src/cli.ts verify-etag",
-    "gs1:verify:etag:script": "./verify-integrity.sh"
+    "gs1:verify:etag:script": "./verify-integrity.sh",
+    "db:generate": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:migrate": "npx prisma db migrate dev",
+    "db:deploy": "npx prisma db deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.777.0",
     "@aws-sdk/s3-request-presigner": "^3.777.0",
-    "@nestjs/common": "^9.0.0",
+    "@nestjs/common": "^11.0.12",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^9.0.0",
     "@nestjs/jwt": "^9.0.0",

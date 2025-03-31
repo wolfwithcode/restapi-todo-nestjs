@@ -4,7 +4,7 @@ import {
   SaveParams,
 } from '../../../common/interfaces/repository.interface';
 import { LinkResolver } from '../entities/link-resolver.entity';
-import { MinioService } from '../../../storage/minio.service';
+import { StorageService } from '@app/storage/storage.service';
 
 /**
  * MinIO Link Resolver Repository
@@ -16,7 +16,7 @@ import { MinioService } from '../../../storage/minio.service';
 export class MinioLinkResolverRepository implements IRepositoryProvider {
   private readonly logger = new Logger(MinioLinkResolverRepository.name);
 
-  constructor(private readonly minioService: MinioService) {}
+  constructor(private readonly minioService: StorageService) {}
 
   /**
    * Generates an ID based on parameters

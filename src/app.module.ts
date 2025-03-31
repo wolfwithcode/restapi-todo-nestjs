@@ -3,13 +3,11 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from '../libs/auth/auth.module';
-import { UserModule } from './demoApp/user/user.module';
+import { UserModule } from './demo-app/user/user.module';
 import { PrismaModule } from '../libs/prisma/prisma.module';
-import { LinkResolverModule } from './demoApp/link-resolver/link-resolver.module';
-import { StorageModule } from './demoApp/storage/storage.module';
-import { GS1Module } from './demoApp/gs1/gs1.module';
-import { LoggingMiddleware } from '@common/middlewares/logging.middleware';
-import { ResponseMiddleware } from '@common/middlewares/response.middleware';
+import { LinkResolverModule } from './demo-app/link-resolver/link-resolver.module';
+import { StorageModule } from './demo-app/storage/storage.module';
+import { LoggingMiddleware, ResponseMiddleware } from '@common/middlewares';
 
 @Module({
   imports: [
@@ -19,7 +17,6 @@ import { ResponseMiddleware } from '@common/middlewares/response.middleware';
     PrismaModule,
     LinkResolverModule,
     StorageModule,
-    GS1Module,
   ],
   controllers: [AppController],
   providers: [AppService],

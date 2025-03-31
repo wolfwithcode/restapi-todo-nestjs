@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
 import { LinkResolverService } from './link-resolver.service';
 import { LinkResolverController } from './link-resolver.controller';
-import { LinkResolverRepository } from './repositories/link-resolver.repository';
 import { MinioLinkResolverRepository } from './repositories/minio-link-resolver.repository';
-import { StorageModule } from '../../storage/storage.module';
+import { StorageModule } from '@app/storage/storage.module';
 
 @Module({
   imports: [StorageModule],

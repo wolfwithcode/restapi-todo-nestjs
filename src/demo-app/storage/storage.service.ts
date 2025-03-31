@@ -12,17 +12,18 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
-import { FileWithETag } from './types';
+import { FileWithETag } from './storage.type';
 import { MinioException } from '@common/exceptions/minio.exception';
 
 @Injectable()
-export class MinioService implements OnModuleInit {
+export class StorageService implements OnModuleInit {
   private readonly s3Client: S3Client;
   private readonly bucket: string;
-  private readonly logger = new Logger(MinioService.name);
+  private readonly logger = new Logger(StorageService.name);
 
   constructor(private readonly configService: ConfigService) {
     const storageConfig = this.configService.get('storage.minio');
+    this.logger.debug(`storage config ${storageConfig.bucket}`);
 
     if (!storageConfig) {
       this.logger.error('MinIO configuration not found.');

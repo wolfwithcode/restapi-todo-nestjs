@@ -5,21 +5,25 @@ import { Request } from 'express';
 import * as cookieParser from 'cookie-parser';
 import * as csurf from 'csurf';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { MinioExceptionFilter } from '@common/filters/minioException.filter';
+import { MinioExceptionFilter } from '@common/filters';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
   app.useGlobalPipes(
     new ValidationPipe({
-      forbidNonWhitelisted: true, // Replaces whitelist
-      transform: true, // Enables automatic type transformation
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
+
   app.enableCors({
     credentials: true,
     origin: ['http://localhost:3000'],
   });
+
   app.use(cookieParser());
+
   app.use(
     csurf({
       cookie: {
@@ -32,6 +36,8 @@ async function bootstrap() {
       },
     }),
   );
+
+  // Global exception filters
   app.useGlobalFilters(new MinioExceptionFilter());
 
   // Setup Swagger documentation

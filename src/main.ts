@@ -5,6 +5,7 @@ import { Request } from 'express';
 import * as cookieParser from 'cookie-parser';
 import * as csurf from 'csurf';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { MinioExceptionFilter } from '@common/filters/minioException.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -31,6 +32,7 @@ async function bootstrap() {
       },
     }),
   );
+  app.useGlobalFilters(new MinioExceptionFilter());
 
   // Setup Swagger documentation
   const config = new DocumentBuilder()
